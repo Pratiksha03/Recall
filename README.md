@@ -15,9 +15,10 @@ Built with Kotlin + Jetpack Compose + Room.
 4. [Project layout](#project-layout)
 5. [How the pieces fit together](#how-the-pieces-fit-together)
 6. [The Kotlin you need to read this code](#the-kotlin-you-need-to-read-this-code)
-7. [Importing from Anki](#importing-from-anki)
-8. [The scheduling algorithm](#the-scheduling-algorithm)
-9. [Things you might want to change first](#things-you-might-want-to-change-first)
+7. [How screens move](#how-screens-move)
+8. [Importing from Anki](#importing-from-anki)
+9. [The scheduling algorithm](#the-scheduling-algorithm)
+10. [Things you might want to change first](#things-you-might-want-to-change-first)
 
 ---
 
@@ -267,6 +268,33 @@ function and redraws what differs. So instead of `button.setEnabled(false)` you 
   of the screens touch the database, so you can read any one of them on its own.
 
 ---
+
+## How screens move
+
+Worth knowing because the default is wrong and the failure looks like a rendering bug.
+
+Navigation Compose defaults to a **700ms crossfade**. Two screens sit stacked at partial opacity for
+most of a second, and in the middle — when the outgoing screen has faded out but the incoming one has
+not yet faded in — *neither is opaque*, so the window background shows through. That reads as a
+**flash** between pages, and no amount of tuning the durations removes it, because the transparency
+is the cause.
+
+What almost every Android app actually uses is a **push transition** (Material calls the family
+*Material motion*; this one is *shared axis X*): the incoming screen slides in **fully opaque** and
+covers the outgoing one, which drifts a quarter of the width the other way. Nothing fades, so no
+background is ever visible, and the parallax between the two layers is what reads as *gliding*. Back
+runs the same motion mirrored, which is what makes "back" feel like back rather than like another
+forward step.
+
+It is set once on the `NavHost` in
+[`MainActivity.kt`](app/src/main/java/com/recall/app/MainActivity.kt) and every screen inherits it.
+The rule to remember: **cross-fade content, push pages.** Fading works for a card swapping inside a
+screen, where the background behind it is meant to be seen. It fails for whole screens, where it
+just exposes the window.
+
+`android:enableOnBackInvokedCallback="true"` in the manifest additionally opts into **predictive
+back**, the Android 14+ gesture where dragging from the edge peels the current screen away and shows
+where you are going before you commit.
 
 ## The Kotlin you need to read this code
 

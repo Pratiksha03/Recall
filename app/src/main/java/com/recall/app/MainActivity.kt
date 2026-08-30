@@ -12,8 +12,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.runtime.Composable
@@ -66,12 +64,6 @@ class MainActivity : ComponentActivity() {
 private val NavEasing = CubicBezierEasing(0.2f, 0f, 0f, 1f)
 private const val NAV_MS = 300
 
-// The slide runs the full 300ms, but the opacity changes finish much sooner. While
-// both screens are part-transparent you can see through one to the other, which is
-// the "smeary" look; getting the old screen to zero fast keeps the movement crisp.
-private const val FADE_IN_MS = 200
-private const val FADE_OUT_MS = 110
-
 private object Routes {
     const val DECKS = "decks"
     const val DECK_DETAIL = "deck/{deckId}"
@@ -93,32 +85,33 @@ private fun RecallNavGraph(vm: RecallViewModel = viewModel()) {
     val decks by vm.decks.collectAsStateWithLifecycle()
     val allDecks by vm.allDecks.collectAsStateWithLifecycle()
 
-    // Navigation Compose's default is a 700ms crossfade, which is why moving between
-    // screens felt mushy: for most of a second two screens sit on top of each other at
-    // partial opacity, so nothing looks like it is moving — it just looks slow.
+    // A push transition, the motion most Android apps use.
     //
-    // This is Material's shared-axis-X instead. The incoming screen slides a fifth of
-    // the width and fades in over 300ms; the outgoing one drifts a little the other way
-    // and fades out in half that, so it is gone before it can smear. Going back mirrors
-    // it, which is what makes "back" feel like back.
+    // Deliberately NO fade. Cross-fading is what caused the flash: while the
+    // incoming screen was rising from alpha 0 and the outgoing one had already
+    // dropped to 0, neither was opaque and you saw through both to the window
+    // background for a frame or two.
+    //
+    // Instead the new screen slides in at full opacity and covers the old one, the
+    // way a sheet of paper slides over another. The old screen drifts a quarter of
+    // the width the other way, so it looks pushed rather than teleported — that
+    // parallax is what reads as "gliding". Because the incoming surface is opaque
+    // and enters from the full width, it always covers whatever it has uncovered,
+    // so no background can show through at any point in the animation.
     NavHost(
         navController = navController,
         startDestination = Routes.DECKS,
         enterTransition = {
-            slideInHorizontally(tween(NAV_MS, easing = NavEasing)) { it / 5 } +
-                fadeIn(tween(FADE_IN_MS, easing = NavEasing))
+            slideInHorizontally(tween(NAV_MS, easing = NavEasing)) { it }
         },
         exitTransition = {
-            slideOutHorizontally(tween(NAV_MS, easing = NavEasing)) { -it / 10 } +
-                fadeOut(tween(FADE_OUT_MS))
+            slideOutHorizontally(tween(NAV_MS, easing = NavEasing)) { -it / 4 }
         },
         popEnterTransition = {
-            slideInHorizontally(tween(NAV_MS, easing = NavEasing)) { -it / 10 } +
-                fadeIn(tween(FADE_IN_MS, easing = NavEasing))
+            slideInHorizontally(tween(NAV_MS, easing = NavEasing)) { -it / 4 }
         },
         popExitTransition = {
-            slideOutHorizontally(tween(NAV_MS, easing = NavEasing)) { it / 5 } +
-                fadeOut(tween(FADE_OUT_MS))
+            slideOutHorizontally(tween(NAV_MS, easing = NavEasing)) { it }
         }
     ) {
 
