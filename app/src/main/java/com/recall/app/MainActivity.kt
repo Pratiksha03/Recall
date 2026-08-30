@@ -10,6 +10,12 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -56,6 +62,16 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+/** Material's "emphasized" curve: leaves fast, settles gently. */
+private val NavEasing = CubicBezierEasing(0.2f, 0f, 0f, 1f)
+private const val NAV_MS = 300
+
+// The slide runs the full 300ms, but the opacity changes finish much sooner. While
+// both screens are part-transparent you can see through one to the other, which is
+// the "smeary" look; getting the old screen to zero fast keeps the movement crisp.
+private const val FADE_IN_MS = 200
+private const val FADE_OUT_MS = 110
+
 private object Routes {
     const val DECKS = "decks"
     const val DECK_DETAIL = "deck/{deckId}"
@@ -77,7 +93,34 @@ private fun RecallNavGraph(vm: RecallViewModel = viewModel()) {
     val decks by vm.decks.collectAsStateWithLifecycle()
     val allDecks by vm.allDecks.collectAsStateWithLifecycle()
 
-    NavHost(navController = navController, startDestination = Routes.DECKS) {
+    // Navigation Compose's default is a 700ms crossfade, which is why moving between
+    // screens felt mushy: for most of a second two screens sit on top of each other at
+    // partial opacity, so nothing looks like it is moving — it just looks slow.
+    //
+    // This is Material's shared-axis-X instead. The incoming screen slides a fifth of
+    // the width and fades in over 300ms; the outgoing one drifts a little the other way
+    // and fades out in half that, so it is gone before it can smear. Going back mirrors
+    // it, which is what makes "back" feel like back.
+    NavHost(
+        navController = navController,
+        startDestination = Routes.DECKS,
+        enterTransition = {
+            slideInHorizontally(tween(NAV_MS, easing = NavEasing)) { it / 5 } +
+                fadeIn(tween(FADE_IN_MS, easing = NavEasing))
+        },
+        exitTransition = {
+            slideOutHorizontally(tween(NAV_MS, easing = NavEasing)) { -it / 10 } +
+                fadeOut(tween(FADE_OUT_MS))
+        },
+        popEnterTransition = {
+            slideInHorizontally(tween(NAV_MS, easing = NavEasing)) { -it / 10 } +
+                fadeIn(tween(FADE_IN_MS, easing = NavEasing))
+        },
+        popExitTransition = {
+            slideOutHorizontally(tween(NAV_MS, easing = NavEasing)) { it / 5 } +
+                fadeOut(tween(FADE_OUT_MS))
+        }
+    ) {
 
         composable(Routes.DECKS) {
             var showNewDeck by remember { mutableStateOf(false) }

@@ -129,6 +129,25 @@ JAVA_HOME=/opt/homebrew/opt/openjdk@21 ./gradlew assembleDebug
 > `local.properties` is machine-specific and deliberately gitignored — never commit it. Running from
 > inside Android Studio needs none of this.
 
+### Release build — noticeably smoother
+
+```bash
+JAVA_HOME=/opt/homebrew/opt/openjdk@21 ./gradlew assembleRelease
+```
+
+Output: `app/build/outputs/apk/release/app-release.apk`, about **1.6 MB** against the debug build's
+17 MB.
+
+It is worth installing this one to judge how the app really feels. A debug build is not just bigger,
+it is measurably less smooth, for a reason that is easy to miss: **Compose ships baseline profiles
+that only apply to release builds.** In debug, that framework code is interpreted rather than
+AOT-compiled, which shows up exactly as janky first-run animations. R8 shrinking and optimisation
+sit on top of that.
+
+The release build here is signed with the **debug key** purely so it can be installed side by side
+for testing. It is *not* distributable: it cannot go to the Play Store, and anyone's debug keystore
+could sign an update over it. Publishing would need a real upload key, which is a separate step.
+
 ### Install straight to the phone over USB
 
 With the phone plugged in and USB debugging on:

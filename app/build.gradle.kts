@@ -19,8 +19,19 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            // R8 shrinks and optimises; more importantly a release build is the only
+            // one where Compose's bundled baseline profiles apply, so the framework
+            // code is AOT-compiled instead of interpreted on first run. That is the
+            // single biggest difference in perceived smoothness on a real phone.
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+
+            // Signed with the debug key purely so you can install it for testing.
+            // This is NOT a distributable build: it cannot go on the Play Store, and
+            // anyone's debug keystore can sign an update over it. Generating a real
+            // upload key is a separate step, only needed if you ever publish.
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
 

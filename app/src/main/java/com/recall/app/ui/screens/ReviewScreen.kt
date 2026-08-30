@@ -1,6 +1,11 @@
 package com.recall.app.ui.screens
 
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -27,7 +32,6 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.TaskAlt
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -49,6 +53,9 @@ import com.recall.app.srs.Rating
 import com.recall.app.srs.Sm2
 import com.recall.app.ui.ReviewState
 import com.recall.app.ui.components.AnswerView
+
+private val CardEasing = CubicBezierEasing(0.2f, 0f, 0f, 1f)
+private const val CARD_MS = 260
 
 /**
  * The study screen. Question on top, tap anywhere to flip, then grade yourself.
@@ -73,33 +80,54 @@ fun ReviewScreen(
             ReviewTopBar(state, deckName, onExit)
 
             when {
-                state.loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator()
-                }
+                // Deliberately blank, not a spinner. Loading the due queue is one
+                // indexed query over a local table — it finishes well inside a frame,
+                // so a spinner would appear and vanish as a flicker during the screen
+                // transition, which reads as jank rather than as progress.
+                state.loading -> Box(Modifier.fillMaxSize())
 
                 state.finished -> SessionFinished(state.reviewed, onExit)
 
                 else -> {
                     val card = state.current!!
-                    Column(
-                        Modifier
-                            .weight(1f)
-                            .verticalScroll(rememberScrollState())
-                            .padding(horizontal = 20.dp)
-                    ) {
-                        QuestionCard(card, state.revealed, onReveal)
 
-                        AnimatedVisibility(
-                            visible = state.revealed,
-                            enter = fadeIn() + expandVertically(),
-                            exit = fadeOut()
+                    // Grading a card used to hard-cut to the next one, which gives the
+                    // eye nothing to follow and reads as a glitch. The new card slides
+                    // in from the right as the old one fades, so the motion says
+                    // "next" — the same direction the whole app moves forward in.
+                    AnimatedContent(
+                        targetState = card,
+                        transitionSpec = {
+                            (
+                                slideInHorizontally(tween(CARD_MS, easing = CardEasing)) { it / 6 } +
+                                    fadeIn(tween(CARD_MS))
+                                ) togetherWith fadeOut(tween(CARD_MS / 2))
+                        },
+                        label = "reviewCard",
+                        modifier = Modifier.weight(1f)
+                    ) { shown ->
+                        Column(
+                            Modifier
+                                .fillMaxSize()
+                                .verticalScroll(rememberScrollState())
+                                .padding(horizontal = 20.dp)
                         ) {
-                            Column {
-                                Spacer(Modifier.height(16.dp))
-                                AnswerCard(card)
+                            QuestionCard(shown, state.revealed, onReveal)
+
+                            AnimatedVisibility(
+                                visible = state.revealed,
+                                enter = fadeIn(tween(200)) + expandVertically(
+                                    animationSpec = tween(240, easing = CardEasing)
+                                ),
+                                exit = fadeOut(tween(120))
+                            ) {
+                                Column {
+                                    Spacer(Modifier.height(16.dp))
+                                    AnswerCard(shown)
+                                }
                             }
+                            Spacer(Modifier.height(20.dp))
                         }
-                        Spacer(Modifier.height(20.dp))
                     }
 
                     if (state.revealed) {
