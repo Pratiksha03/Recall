@@ -47,7 +47,7 @@ is deliberately preserved — fixing a typo should not throw away the review his
 card its current interval. Replacing an image or audio file deletes the old one, but only once you
 actually save.
 
-**Import.** Bulk import from Anki's plain-text export format — see
+**Import.** Bulk import from Anki — a `.colpkg`/`.apkg` package or a plain-text export; see
 [Importing from Anki](#importing-from-anki).
 
 ### Why Code is its own type, and not just Text
@@ -208,6 +208,7 @@ Recall/
             │   ├── Converters.kt       # teaches Room to store the enum
             │   ├── DeckWithCounts.kt   # deck + card counts, for the home screen
             │   ├── AnkiImport.kt       # parses Anki's plain-text export
+            │   ├── AnkiPackage.kt      # reads .colpkg/.apkg: zip -> zstd -> SQLite
             │   ├── Migrations.kt       # how to change the schema without data loss
             │   ├── RecallDao.kt        # the SQL
             │   ├── RecallDatabase.kt   # Room database singleton
@@ -338,10 +339,54 @@ Compose state holder, but let me read and write it like a plain variable". The `
 
 ## Importing from Anki
 
-**Settings → Import cards.** Paste an export or open a `.txt`/`.csv` file. Everything re-parses as
-you type, so the preview is always the truth about what the button will create.
+**Settings → Import cards.** Open an Anki package (`.colpkg` or `.apkg`), open a `.txt`/`.csv`
+file, or paste an export straight in. Everything re-parses as you type, so the preview is always
+the truth about what the button will create.
 
-In Anki: **File → Export → Notes in Plain Text (.txt)**.
+In Anki, either export works:
+
+- **File → Export → Anki Collection Package (.colpkg)** — or a single deck as `.apkg`. Nothing to
+  configure; this is the file Anki gives you by default.
+- **File → Export → Notes in Plain Text (.txt)** — the older, simpler path.
+
+A picked file is identified by its first four bytes, not by its name or MIME type: file browsers
+disagree about what a `.colpkg` is (`application/zip`, `application/octet-stream`, sometimes
+nothing at all), so the picker filters on nothing and the app decides from the content.
+
+### Packages
+
+[`data/AnkiPackage.kt`](app/src/main/java/com/recall/app/data/AnkiPackage.kt). A package is not
+text at all — it is a ZIP holding Anki's SQLite collection plus every media file:
+
+```
+export.colpkg
+├── meta                    format version
+├── collection.anki21b      SQLite, zstd-compressed — Anki 2.1.50 and later
+│     or collection.anki21  SQLite, plain — older 2.1.x
+│     or collection.anki2   SQLite, plain — legacy exports
+├── media                   an index of the files below
+└── 0, 1, 2, …              the media files themselves
+```
+
+So reading one means unzipping, zstd-decompressing, and querying a database — which is why
+[`zstd-jni`](https://github.com/luben/zstd-jni) is a dependency and why this is the one part of the
+app with tests that need a device. Both collection schemas are handled: the old one keeps deck
+names as JSON in the single `col` row, the new one has a real `decks` table.
+
+| Case | Behaviour |
+|---|---|
+| Note fields | field 1 is the question, the first non-empty field after it is the answer |
+| Cloze notes | `{{c1::France}}` becomes a `[...]` blank in the question, `France` as the answer |
+| Deck names | the deck most of the notes came from pre-fills the destination |
+| Several decks | imported into one deck, with a warning saying how many were collapsed |
+| Media | not imported; `<img>` and `[sound:]` are dropped and the affected notes counted |
+| Filtered decks | a card's `odid` wins over `did`, so it is filed where it really lives |
+| A huge single note | skipped and counted — it will not fit in a SQLite cursor window |
+
+The ZIP is streamed rather than copied, and reading stops at the collection entry, so a 2 GB
+export with a gigabyte of media does not get unpacked to read a few thousand notes.
+
+### Text exports
 
 The format is one note per line, fields separated by tabs, with optional headers:
 
@@ -353,7 +398,7 @@ The format is one note per line, fields separated by tabs, with optional headers
 What is "hello"?<tab>Hola
 ```
 
-What the parser ([`data/AnkiImport.kt`](app/src/main/java/com/recall/app/data/AnkiImport.kt))
+What the text parser ([`data/AnkiImport.kt`](app/src/main/java/com/recall/app/data/AnkiImport.kt))
 handles, all of which turn up in real exports:
 
 | Case | Behaviour |
@@ -369,9 +414,9 @@ handles, all of which turn up in real exports:
 | Extra columns | anything past the first two fields is ignored |
 | A malformed line | skipped and counted, never fatal to the rest of the file |
 
-Two deliberate limitations. **`.apkg` files are not supported** — that is a zipped SQLite database,
-a different job entirely; export as text instead. And **media is not imported**: Anki's `<img>` tags
-become plain text, because the images live outside the text file.
+One deliberate limitation, shared by both paths: **media is not imported**. Anki's `<img>` tags
+become plain text, because this app keys its own images by path and copying a collection's media
+in is a separate job.
 
 One gotcha worth knowing, because it is the kind of bug that looks like corruption: HTML entities
 all end in a semicolon, so `&amp;` `&lt;` `&#39;` make a tab-separated file *look* semicolon-separated
@@ -438,6 +483,14 @@ being dropped, but nothing filters on them yet. This one *does* need a migration
 
 Plain JUnit on the JVM, no emulator. `srs/Sm2.kt` and `data/AnkiImport.kt` have no Android
 dependencies, which is exactly why they are the parts worth testing this way.
+
+```bash
+./gradlew connectedDebugAndroidTest
+```
+
+Needs a running emulator or a plugged-in phone, and covers one thing: `data/AnkiPackage.kt`. Zip,
+zstd and SQLite are all real device machinery, so the tests build actual `.colpkg` and `.apkg`
+files — in both of the layouts Anki produces — and read them back.
 
 ### Changing the database
 
