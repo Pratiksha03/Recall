@@ -127,7 +127,7 @@ private fun ReviewTopBar(state: ReviewState, deckName: String, onExit: () -> Uni
                 )
                 Text(
                     if (state.finished) "Session complete"
-                    else "${state.index + 1} of ${state.queue.size}",
+                    else "${state.remaining} card${if (state.remaining == 1) "" else "s"} left",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

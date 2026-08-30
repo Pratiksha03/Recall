@@ -27,6 +27,7 @@ import com.recall.app.ui.RecallViewModel
 import com.recall.app.ui.screens.AddCardScreen
 import com.recall.app.ui.screens.DeckDetailScreen
 import com.recall.app.ui.screens.DeckListScreen
+import com.recall.app.ui.screens.ImportScreen
 import com.recall.app.ui.screens.NewDeckDialog
 import com.recall.app.ui.screens.ReviewScreen
 import com.recall.app.ui.screens.SettingsScreen
@@ -60,11 +61,14 @@ private object Routes {
     const val DECK_DETAIL = "deck/{deckId}"
     const val REVIEW = "review/{deckId}"
     const val ADD = "add?deckId={deckId}"
+    const val EDIT = "edit/{cardId}"
+    const val IMPORT = "import"
     const val SETTINGS = "settings"
 
     fun deckDetail(id: Long) = "deck/$id"
     fun review(id: Long) = "review/$id"
     fun add(deckId: Long?) = "add?deckId=${deckId ?: -1L}"
+    fun edit(cardId: Long) = "edit/$cardId"
 }
 
 @Composable
@@ -113,6 +117,7 @@ private fun RecallNavGraph(vm: RecallViewModel = viewModel()) {
                 onReview = { navController.navigate(Routes.review(deckId)) },
                 onAddCard = { navController.navigate(Routes.add(deckId)) },
                 onDeleteCard = vm::deleteCard,
+                onEditCard = { navController.navigate(Routes.edit(it.id)) },
                 onDeleteDeck = {
                     deck?.let(vm::deleteDeck)
                     navController.popBackStack()
@@ -144,6 +149,44 @@ private fun RecallNavGraph(vm: RecallViewModel = viewModel()) {
             )
         }
 
+        composable(Routes.IMPORT) {
+            ImportScreen(
+                decks = allDecks,
+                onImport = { cards, existingDeckId, newDeckName ->
+                    vm.importCards(cards, existingDeckId, newDeckName) {
+                        navController.popBackStack()
+                    }
+                },
+                onBack = { navController.popBackStack() }
+            )
+        }
+
+        composable(
+            route = Routes.EDIT,
+            arguments = listOf(navArgument("cardId") { type = NavType.LongType })
+        ) { entry ->
+            val cardId = entry.arguments?.getLong("cardId") ?: return@composable
+            val card by vm.cardById(cardId).collectAsStateWithLifecycle(initialValue = null)
+
+            // Wait for the card to load rather than briefly rendering a blank form.
+            card?.let { existing ->
+                AddCardScreen(
+                    decks = allDecks,
+                    initialDeckId = existing.deckId,
+                    editing = existing,
+                    onSave = { deckId, question, answer, type, note ->
+                        vm.editCard(existing, deckId, question, answer, type, note) {
+                            navController.popBackStack()
+                        }
+                    },
+                    onCreateDeck = { name, colorIndex, onCreated ->
+                        vm.createDeck(name, colorIndex, onCreated)
+                    },
+                    onBack = { navController.popBackStack() }
+                )
+            }
+        }
+
         composable(
             route = Routes.ADD,
             arguments = listOf(navArgument("deckId") {
@@ -171,6 +214,7 @@ private fun RecallNavGraph(vm: RecallViewModel = viewModel()) {
         composable(Routes.SETTINGS) {
             val context = LocalContext.current
             val reminder by vm.reminder.collectAsStateWithLifecycle()
+            val dueNow by vm.totalDue.collectAsStateWithLifecycle()
 
             // Android 13+ requires asking before an app may post notifications.
             val requestPermission = rememberLauncherForActivityResult(
@@ -183,6 +227,7 @@ private fun RecallNavGraph(vm: RecallViewModel = viewModel()) {
                 reminderMinute = reminder.minute,
                 notificationsBlocked = !NotificationManagerCompat.from(context)
                     .areNotificationsEnabled(),
+                dueNow = dueNow,
                 onToggleReminder = { wanted ->
                     if (wanted && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                         // Turn the switch on only if the user says yes.
@@ -192,6 +237,8 @@ private fun RecallNavGraph(vm: RecallViewModel = viewModel()) {
                     }
                 },
                 onSetTime = vm::setReminderTime,
+                onSendTestNotification = { Notifications.postTest(context) },
+                onOpenImport = { navController.navigate(Routes.IMPORT) },
                 onOpenSystemSettings = {
                     context.startActivity(
                         Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)

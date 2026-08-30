@@ -7,11 +7,13 @@ import com.recall.app.data.AnswerType
 import com.recall.app.data.Card
 import com.recall.app.data.Deck
 import com.recall.app.data.DeckWithCounts
+import com.recall.app.data.ImportedCard
 import com.recall.app.data.RecallRepository
 import com.recall.app.data.ReminderPrefs
 import com.recall.app.reminder.ReminderScheduler
 import com.recall.app.srs.Rating
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -39,6 +41,10 @@ class RecallViewModel(app: Application) : AndroidViewModel(app) {
 
     val allDecks: StateFlow<List<Deck>> = repo.allDecks()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** Cards due across every deck — drives the settings screen's "right now" line. */
+    val totalDue: StateFlow<Int> = repo.totalDue()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
 
     private val _reviewState = MutableStateFlow(ReviewState())
     val reviewState: StateFlow<ReviewState> = _reviewState.asStateFlow()
@@ -101,6 +107,45 @@ class RecallViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             repo.addCard(deckId, question, answer, answerType, note)
             onDone()
+        }
+    }
+
+    /** Loads one card so the edit screen can pre-fill itself. */
+    fun cardById(id: Long): Flow<Card?> = flow { emit(repo.cardById(id)) }
+
+    fun editCard(
+        original: Card,
+        deckId: Long,
+        question: String,
+        answer: String,
+        answerType: AnswerType,
+        note: String,
+        onDone: () -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            repo.editCard(original, deckId, question, answer, answerType, note)
+            onDone()
+        }
+    }
+
+    /**
+     * Import parsed cards, creating the target deck if it does not exist yet.
+     * Reports how many landed so the UI can confirm rather than just closing.
+     */
+    fun importCards(
+        cards: List<ImportedCard>,
+        existingDeckId: Long?,
+        newDeckName: String?,
+        onDone: (Int) -> Unit = {}
+    ) {
+        if (cards.isEmpty()) return
+        viewModelScope.launch {
+            val deckId = existingDeckId
+                ?: repo.findOrCreateDeck(
+                    newDeckName?.takeIf { it.isNotBlank() } ?: "Imported",
+                    colorIndex = decks.value.size
+                )
+            onDone(repo.importInto(deckId, cards))
         }
     }
 
@@ -172,6 +217,21 @@ data class ReviewState(
 ) {
     val current: Card? get() = queue.getOrNull(index)
     val finished: Boolean get() = !loading && current == null
+
+    /**
+     * How many cards are still ahead of you.
+     *
+     * A card you rate "Again" is pushed back onto the queue, so queue.size grows
+     * as you go. Counting raw positions produced "4 of 4", then "5 of 5" — a
+     * total that ran away from you and a progress bar that never filled.
+     * distinctBy{id} counts a repeated card once, so this only ever goes down.
+     */
+    val remaining: Int get() = queue.drop(index).distinctBy { it.id }.size
+
+    /** Fraction of the original due pile that is fully behind you. */
     val progress: Float
-        get() = if (queue.isEmpty()) 0f else (index.toFloat() / queue.size).coerceIn(0f, 1f)
+        get() {
+            if (total == 0) return 0f
+            return ((total - remaining).coerceAtLeast(0).toFloat() / total).coerceIn(0f, 1f)
+        }
 }

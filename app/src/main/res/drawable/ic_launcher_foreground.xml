@@ -3,19 +3,35 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- A simple stack of cards -->
+    <!--
+      Adaptive icon geometry. The canvas is 108x108 but the launcher masks it to a
+      shape that varies by device, so art must stay inside a circle of radius 33
+      around the centre (54, 54).
+
+      Centred *optically*, not geometrically. The front card is opaque while the two
+      behind it are at 45% and 70% alpha, so simply centring the bounding box leaves
+      the icon looking bottom-heavy — the eye weights the solid shape more. Weighting
+      each card by alpha x area puts the visual centre at y 53.6, near enough to 54.
+
+      Extent: x 31..77, y 32..72. Farthest corner is 31.8 from centre, inside 33.
+    -->
+
+    <!-- back card -->
     <path
         android:fillColor="#FFFFFFFF"
         android:fillAlpha="0.45"
-        android:pathData="M34,32 h40 a5,5 0 0 1 5,5 v34 a5,5 0 0 1 -5,5 h-40 a5,5 0 0 1 -5,-5 v-34 a5,5 0 0 1 5,-5 z" />
+        android:pathData="M40,32 h28 a5,5 0 0 1 5,5 v20 a5,5 0 0 1 -5,5 h-28 a5,5 0 0 1 -5,-5 v-20 a5,5 0 0 1 5,-5 z" />
+    <!-- middle card -->
     <path
         android:fillColor="#FFFFFFFF"
         android:fillAlpha="0.7"
-        android:pathData="M31,38 h40 a5,5 0 0 1 5,5 v34 a5,5 0 0 1 -5,5 h-40 a5,5 0 0 1 -5,-5 v-34 a5,5 0 0 1 5,-5 z" />
+        android:pathData="M38,37 h32 a5,5 0 0 1 5,5 v20 a5,5 0 0 1 -5,5 h-32 a5,5 0 0 1 -5,-5 v-20 a5,5 0 0 1 5,-5 z" />
+    <!-- front card -->
     <path
         android:fillColor="#FFFFFFFF"
-        android:pathData="M28,44 h40 a5,5 0 0 1 5,5 v22 a5,5 0 0 1 -5,5 h-40 a5,5 0 0 1 -5,-5 v-22 a5,5 0 0 1 5,-5 z" />
+        android:pathData="M37,42 h34 a6,6 0 0 1 6,6 v18 a6,6 0 0 1 -6,6 h-34 a6,6 0 0 1 -6,-6 v-18 a6,6 0 0 1 6,-6 z" />
+    <!-- text lines on the front card -->
     <path
         android:fillColor="#FF4F46E5"
-        android:pathData="M32,54 h24 v4 h-24 z M32,62 h32 v4 h-32 z" />
+        android:pathData="M39,52 h22 v4 h-22 z M39,60 h30 v4 h-30 z" />
 </vector>

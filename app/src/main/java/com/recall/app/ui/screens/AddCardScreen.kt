@@ -71,6 +71,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.recall.app.data.AnswerType
+import com.recall.app.data.Card
 import com.recall.app.data.Deck
 import com.recall.app.data.MediaStore
 import com.recall.app.ui.components.AnswerView
@@ -88,6 +89,7 @@ import com.recall.app.ui.theme.accentFor
 fun AddCardScreen(
     decks: List<Deck>,
     initialDeckId: Long?,
+    editing: Card? = null,
     onSave: (deckId: Long, question: String, answer: String, type: AnswerType, note: String) -> Unit,
     onCreateDeck: (name: String, colorIndex: Int, onCreated: (Long) -> Unit) -> Unit,
     onBack: () -> Unit
@@ -101,18 +103,40 @@ fun AddCardScreen(
     // and gets a new instance on every write, which would reset the picker the moment
     // you created a deck from here. Null means "no explicit choice yet" and falls back
     // to the first deck at render time.
-    var selectedDeckId by rememberSaveable { mutableStateOf(initialDeckId) }
-    var question by rememberSaveable { mutableStateOf("") }
-    var answerType by rememberSaveable { mutableStateOf(AnswerType.TEXT) }
-    var textAnswer by rememberSaveable { mutableStateOf("") }
-    var linkAnswer by rememberSaveable { mutableStateOf("") }
-    var codeAnswer by rememberSaveable { mutableStateOf("") }
+    //
+    // When editing, every field is keyed on the card's id and seeded from it, so
+    // opening a different card rebuilds the form instead of showing the last one.
+    val editId = editing?.id
+    var selectedDeckId by rememberSaveable(editId) {
+        mutableStateOf(editing?.deckId ?: initialDeckId)
+    }
+    var question by rememberSaveable(editId) { mutableStateOf(editing?.question ?: "") }
+    var answerType by rememberSaveable(editId) {
+        mutableStateOf(editing?.answerType ?: AnswerType.TEXT)
+    }
+    var textAnswer by rememberSaveable(editId) {
+        mutableStateOf(if (editing?.answerType == AnswerType.TEXT) editing.answer else "")
+    }
+    var linkAnswer by rememberSaveable(editId) {
+        mutableStateOf(if (editing?.answerType == AnswerType.LINK) editing.answer else "")
+    }
+    var codeAnswer by rememberSaveable(editId) {
+        mutableStateOf(if (editing?.answerType == AnswerType.CODE) editing.answer else "")
+    }
     // One slot for whichever file type is selected; switching type clears it, so a
     // half-picked image can never be saved as an audio answer.
-    var filePath by rememberSaveable { mutableStateOf<String?>(null) }
-    var note by rememberSaveable { mutableStateOf("") }
-    var showNote by rememberSaveable { mutableStateOf(false) }
+    var filePath by rememberSaveable(editId) {
+        mutableStateOf(editing?.answer?.takeIf { editing.answerType.isFile })
+    }
+    var note by rememberSaveable(editId) { mutableStateOf(editing?.note ?: "") }
+    var showNote by rememberSaveable(editId) {
+        mutableStateOf(!editing?.note.isNullOrBlank())
+    }
     var showNewDeck by rememberSaveable { mutableStateOf(false) }
+
+    // The file a card already had. Deleting it on save would break the saved card
+    // if the user changed their mind, so only the *replaced* file is cleaned up.
+    val originalFile = editing?.answer?.takeIf { editing.answerType.isFile }
 
     val effectiveDeckId = selectedDeckId ?: decks.firstOrNull()?.id
 
@@ -122,7 +146,7 @@ fun AddCardScreen(
         ActivityResultContracts.PickVisualMedia()
     ) { uri: Uri? ->
         if (uri != null) {
-            filePath?.let(MediaStore::delete)
+            filePath?.takeIf { it != originalFile }?.let(MediaStore::delete)
             filePath = MediaStore.copyImage(context, uri)
         }
     }
@@ -133,7 +157,7 @@ fun AddCardScreen(
         ActivityResultContracts.OpenDocument()
     ) { uri: Uri? ->
         if (uri != null) {
-            filePath?.let(MediaStore::delete)
+            filePath?.takeIf { it != originalFile }?.let(MediaStore::delete)
             filePath = MediaStore.copyAudio(context, uri)
         }
     }
@@ -150,7 +174,12 @@ fun AddCardScreen(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
-                title = { Text("New card", style = MaterialTheme.typography.titleMedium) },
+                title = {
+                    Text(
+                        if (editing == null) "New card" else "Edit card",
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -305,7 +334,10 @@ fun AddCardScreen(
             ) {
                 Icon(Icons.Default.Check, contentDescription = null)
                 Spacer(Modifier.width(8.dp))
-                Text("Save card", fontWeight = FontWeight.SemiBold)
+                Text(
+                    if (editing == null) "Save card" else "Save changes",
+                    fontWeight = FontWeight.SemiBold
+                )
             }
 
             Spacer(Modifier.height(40.dp))

@@ -55,6 +55,9 @@ interface RecallDao {
     @Insert
     suspend fun insertDeck(deck: Deck): Long
 
+    @Query("SELECT * FROM decks WHERE name = :name LIMIT 1")
+    suspend fun deckByName(name: String): Deck?
+
     @Update
     suspend fun updateDeck(deck: Deck)
 
@@ -91,6 +94,10 @@ interface RecallDao {
 
     @Insert
     suspend fun insertCard(card: Card): Long
+
+    /** Bulk insert for imports — one transaction instead of N. */
+    @Insert
+    suspend fun insertCards(cards: List<Card>)
 
     @Update
     suspend fun updateCard(card: Card)

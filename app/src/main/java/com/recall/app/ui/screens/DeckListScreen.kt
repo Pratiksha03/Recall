@@ -23,6 +23,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
@@ -193,7 +194,10 @@ private fun DeckRow(deck: DeckWithCounts, onOpen: () -> Unit, onReview: () -> Un
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(20.dp))
-            .clickable { if (deck.dueCards > 0) onReview() else onOpen() }
+            // Always opens the deck. Routing straight to review when cards were due
+            // made browsing (and so editing) impossible for any active deck — the
+            // review shortcut lives on the badge instead.
+            .clickable(onClick = onOpen)
     ) {
         Row(
             Modifier.padding(16.dp),
@@ -242,16 +246,26 @@ private fun DeckRow(deck: DeckWithCounts, onOpen: () -> Unit, onReview: () -> Un
             Spacer(Modifier.width(10.dp))
 
             if (deck.dueCards > 0) {
-                Box(
-                    Modifier
+                // Tapping the badge starts reviewing immediately.
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
                         .clip(CircleShape)
                         .background(accent)
-                        .padding(horizontal = 11.dp, vertical = 5.dp)
+                        .clickable(onClick = onReview)
+                        .padding(start = 12.dp, end = 9.dp, top = 6.dp, bottom = 6.dp)
                 ) {
                     Text(
                         deck.dueCards.toString(),
                         style = MaterialTheme.typography.labelLarge,
                         color = androidx.compose.ui.graphics.Color.White
+                    )
+                    Spacer(Modifier.width(3.dp))
+                    Icon(
+                        Icons.Default.PlayArrow,
+                        contentDescription = "Review ${deck.name}",
+                        tint = androidx.compose.ui.graphics.Color.White,
+                        modifier = Modifier.size(16.dp)
                     )
                 }
             } else {

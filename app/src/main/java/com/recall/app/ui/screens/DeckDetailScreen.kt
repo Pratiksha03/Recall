@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Link
@@ -56,7 +57,7 @@ import androidx.compose.ui.unit.dp
 import com.recall.app.data.AnswerType
 import com.recall.app.data.Card
 import com.recall.app.data.Deck
-import com.recall.app.srs.formatDue
+import com.recall.app.srs.dueLabel
 import com.recall.app.ui.components.AnswerView
 import com.recall.app.ui.theme.accentFor
 
@@ -72,6 +73,7 @@ fun DeckDetailScreen(
     onReview: () -> Unit,
     onAddCard: () -> Unit,
     onDeleteCard: (Card) -> Unit,
+    onEditCard: (Card) -> Unit,
     onDeleteDeck: () -> Unit
 ) {
     var menuOpen by remember { mutableStateOf(false) }
@@ -167,6 +169,7 @@ fun DeckDetailScreen(
                 CardRow(
                     card = card,
                     accentIndex = colorIndex,
+                    onEdit = { onEditCard(card) },
                     onDelete = { cardToDelete = card }
                 )
             }
@@ -237,7 +240,12 @@ fun DeckDetailScreen(
 }
 
 @Composable
-private fun CardRow(card: Card, accentIndex: Int, onDelete: () -> Unit) {
+private fun CardRow(
+    card: Card,
+    accentIndex: Int,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit
+) {
     var expanded by remember { mutableStateOf(false) }
     val accent = accentFor(accentIndex)
 
@@ -255,11 +263,20 @@ private fun CardRow(card: Card, accentIndex: Int, onDelete: () -> Unit) {
                 TypeChip(card.answerType, accent)
                 Spacer(Modifier.width(10.dp))
                 Text(
-                    formatDue(card.dueAt),
+                    dueLabel(card),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.weight(1f)
                 )
+                IconButton(onClick = onEdit, modifier = Modifier.size(30.dp)) {
+                    Icon(
+                        Icons.Default.Edit,
+                        contentDescription = "Edit card",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(19.dp)
+                    )
+                }
+                Spacer(Modifier.width(4.dp))
                 IconButton(onClick = onDelete, modifier = Modifier.size(30.dp)) {
                     Icon(
                         Icons.Default.DeleteOutline,

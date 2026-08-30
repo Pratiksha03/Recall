@@ -75,4 +75,7 @@ dependencies {
 
     // --- WorkManager: runs the daily reminder even when the app is closed ---
     implementation("androidx.work:work-runtime-ktx:2.9.1")
+
+    // --- plain JVM unit tests: ./gradlew test ---
+    testImplementation("junit:junit:4.13.2")
 }

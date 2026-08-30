@@ -67,6 +67,37 @@ class RecallRepository(private val context: Context) {
 
     suspend fun updateCard(card: Card) = dao.updateCard(card)
 
+    /**
+     * Apply edits to an existing card.
+     *
+     * Scheduling state (interval, ease, dueAt, lapses) is deliberately untouched:
+     * fixing a typo should not throw away the review history that earned this card
+     * its current interval. If the answer was a file and has been replaced, the old
+     * file is deleted here — the only point at which we know it is really orphaned.
+     */
+    suspend fun editCard(
+        original: Card,
+        deckId: Long,
+        question: String,
+        answer: String,
+        answerType: AnswerType,
+        note: String
+    ) {
+        val replacedFile = original.answerType.isFile && original.answer != answer
+        dao.updateCard(
+            original.copy(
+                deckId = deckId,
+                question = question.trim(),
+                answer = if (answerType.isFile) answer else answer.trim(),
+                answerType = answerType,
+                note = note.trim()
+            )
+        )
+        if (replacedFile) MediaStore.delete(original.answer)
+    }
+
+    suspend fun cardById(id: Long): Card? = dao.cardById(id)
+
     suspend fun deleteCard(card: Card) {
         if (card.answerType.isFile) MediaStore.delete(card.answer)
         dao.deleteCard(card)
@@ -84,6 +115,37 @@ class RecallRepository(private val context: Context) {
         val updated = Sm2.apply(card, rating)
         dao.updateCard(updated)
         return updated
+    }
+
+    /** Reuse a deck of this name if it exists, otherwise make one. */
+    suspend fun findOrCreateDeck(name: String, colorIndex: Int = 0): Long {
+        val trimmed = name.trim()
+        return dao.deckByName(trimmed)?.id ?: dao.insertDeck(Deck(name = trimmed, colorIndex = colorIndex))
+    }
+
+    /**
+     * Write imported cards into a deck. Every card starts unseen and due now,
+     * which is what Anki does with newly added notes.
+     *
+     * createdAt is nudged by the index so the browser's "newest first" ordering is
+     * stable rather than arbitrary within a single import.
+     */
+    suspend fun importInto(deckId: Long, cards: List<ImportedCard>): Int {
+        val now = System.currentTimeMillis()
+        dao.insertCards(
+            cards.mapIndexed { index, c ->
+                Card(
+                    deckId = deckId,
+                    question = c.question,
+                    answer = c.answer,
+                    answerType = c.answerType,
+                    note = c.tags,
+                    createdAt = now + index,
+                    dueAt = now
+                )
+            }
+        )
+        return cards.size
     }
 
     /** First launch: give the user something to look at instead of an empty screen. */

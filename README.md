@@ -15,16 +15,17 @@ Built with Kotlin + Jetpack Compose + Room.
 4. [Project layout](#project-layout)
 5. [How the pieces fit together](#how-the-pieces-fit-together)
 6. [The Kotlin you need to read this code](#the-kotlin-you-need-to-read-this-code)
-7. [The scheduling algorithm](#the-scheduling-algorithm)
-8. [Things you might want to change first](#things-you-might-want-to-change-first)
+7. [Importing from Anki](#importing-from-anki)
+8. [The scheduling algorithm](#the-scheduling-algorithm)
+9. [Things you might want to change first](#things-you-might-want-to-change-first)
 
 ---
 
 ## What the app does
 
 **Deck list (home).** A banner showing how many cards are due across all decks, then one row per
-deck with its own accent colour, card count, and a progress bar. Tap a deck with cards due to jump
-straight into reviewing; tap one with nothing due to browse it.
+deck with its own accent colour, card count, and a progress bar. Tapping a deck always opens it for
+browsing; the due badge on the right is itself a button that jumps straight into reviewing.
 
 **Add card.** The screen the whole app is built around, kept to four things: pick a deck, type the
 question, pick the answer type, fill it in. Save is disabled until the card is actually valid.
@@ -38,6 +39,15 @@ question, pick the answer type, fill it in. Save is disabled until the card is a
 
 Image and audio files are *copied* into the app's private folder, so a card keeps working even if
 you later delete the original from your gallery.
+
+**Edit card.** The pencil on any card in the deck browser reopens the same form, pre-filled. You can
+change the question, the answer, the answer type, or move the card to another deck. Scheduling state
+is deliberately preserved — fixing a typo should not throw away the review history that earned the
+card its current interval. Replacing an image or audio file deletes the old one, but only once you
+actually save.
+
+**Import.** Bulk import from Anki's plain-text export format — see
+[Importing from Anki](#importing-from-anki).
 
 ### Why Code is its own type, and not just Text
 
@@ -177,6 +187,8 @@ Recall/
             │   ├── AnswerType.kt       # TEXT / LINK / IMAGE
             │   ├── Converters.kt       # teaches Room to store the enum
             │   ├── DeckWithCounts.kt   # deck + card counts, for the home screen
+            │   ├── AnkiImport.kt       # parses Anki's plain-text export
+            │   ├── Migrations.kt       # how to change the schema without data loss
             │   ├── RecallDao.kt        # the SQL
             │   ├── RecallDatabase.kt   # Room database singleton
             │   ├── MediaStore.kt       # copies picked images/audio into private storage
@@ -199,7 +211,8 @@ Recall/
                 └── screens/
                     ├── DeckListScreen.kt
                     ├── DeckDetailScreen.kt
-                    ├── AddCardScreen.kt
+                    ├── AddCardScreen.kt     # doubles as the edit screen
+                    ├── ImportScreen.kt
                     ├── ReviewScreen.kt
                     └── SettingsScreen.kt
 ```
@@ -276,6 +289,48 @@ Compose state holder, but let me read and write it like a plain variable". The `
 
 ---
 
+## Importing from Anki
+
+**Settings → Import cards.** Paste an export or open a `.txt`/`.csv` file. Everything re-parses as
+you type, so the preview is always the truth about what the button will create.
+
+In Anki: **File → Export → Notes in Plain Text (.txt)**.
+
+The format is one note per line, fields separated by tabs, with optional headers:
+
+```
+#separator:tab
+#html:true
+#deck:Spanish
+#tags:vocab
+What is "hello"?<tab>Hola
+```
+
+What the parser ([`data/AnkiImport.kt`](app/src/main/java/com/recall/app/data/AnkiImport.kt))
+handles, all of which turn up in real exports:
+
+| Case | Behaviour |
+|---|---|
+| `#separator:` | tab, comma, semicolon, space, pipe, colon, or a literal character |
+| No `#separator:` | guessed — a tab anywhere decides it, otherwise most-frequent delimiter |
+| `#deck:` | pre-fills the destination deck name |
+| `#tags:` | kept in the card's note field rather than discarded |
+| Quoted fields | `"..."` may contain the separator, newlines, and `""` for a literal quote |
+| HTML fields | `<br>` becomes a newline, tags stripped, entities decoded |
+| `<pre>` / `<code>` | becomes a **Code** card |
+| A bare URL answer | becomes a **Link** card |
+| Extra columns | anything past the first two fields is ignored |
+| A malformed line | skipped and counted, never fatal to the rest of the file |
+
+Two deliberate limitations. **`.apkg` files are not supported** — that is a zipped SQLite database,
+a different job entirely; export as text instead. And **media is not imported**: Anki's `<img>` tags
+become plain text, because the images live outside the text file.
+
+One gotcha worth knowing, because it is the kind of bug that looks like corruption: HTML entities
+all end in a semicolon, so `&amp;` `&lt;` `&#39;` make a tab-separated file *look* semicolon-separated
+to a naive delimiter guess, and every field gets cut at the first entity. The guesser strips entities
+before counting, and a tab always wins outright. There is a regression test for exactly this.
+
 ## The scheduling algorithm
 
 [`srs/Sm2.kt`](app/src/main/java/com/recall/app/srs/Sm2.kt) — about twenty real lines. Each card
@@ -312,20 +367,30 @@ automatically.
 **Change how aggressive the scheduling is.** The numbers in `Sm2.apply`. Making the first interval
 3 days instead of 1 is a one-character change.
 
-**Add a fourth answer type** (audio, a code snippet, a formula): add a value to
+**Add a sixth answer type** (a formula, a video): add a value to
 [`AnswerType`](app/src/main/java/com/recall/app/data/AnswerType.kt), add a branch in
-[`AnswerView`](app/src/main/java/com/recall/app/ui/components/AnswerView.kt), and add a button to
+[`AnswerView`](app/src/main/java/com/recall/app/ui/components/AnswerView.kt), and add an entry to
 `AnswerTypeSelector` in `AddCardScreen.kt`. The enum's `when` blocks are exhaustive, so the compiler
-will point you at every place that needs updating — lean on that.
+will point you at every place that needs updating — lean on that. The selector is a `FlowRow`, so it
+wraps to a second line on its own. No database migration is needed: enum values are stored as text.
 
-**Edit an existing card.** There's a `RecallRepository.updateCard` already; it needs a screen. The
-quickest route is to reuse `AddCardScreen` with pre-filled initial values.
+**Record audio in-app** instead of only picking a file. `MediaRecorder` plus the `RECORD_AUDIO`
+permission, writing into the same private folder `MediaStore` already uses.
 
-**Add a daily reminder.** `WorkManager` plus a notification, triggered off
-`RecallDao.observeTotalDue`.
+**Export**, the mirror of import. Walk the cards and emit the same tab-separated format with a
+`#separator:tab` header, so a Recall deck opens straight back up in Anki.
 
-**Add tests.** `srs/Sm2.kt` has no Android dependencies, so it's testable with plain JUnit in
-`app/src/test/java`. Add `testImplementation("junit:junit:4.13.2")` to `app/build.gradle.kts`.
+**Add tags** as a real concept. Imported tags currently land in the card's note field rather than
+being dropped, but nothing filters on them yet. This one *does* need a migration — see below.
+
+### Running the tests
+
+```bash
+./gradlew test
+```
+
+Plain JUnit on the JVM, no emulator. `srs/Sm2.kt` and `data/AnkiImport.kt` have no Android
+dependencies, which is exactly why they are the parts worth testing this way.
 
 ### Changing the database
 
@@ -372,48 +437,37 @@ WorkManager 2.9.1 · `minSdk 26` (Android 8.0) · `targetSdk 35`
 
 ## Verified
 
-Built and run on an Android 15 (API 35) emulator, not just compiled. Cold build with the Gradle cache
-deleted: **37/37 tasks executed, zero warnings, zero errors**, 17 MB debug APK.
+Built and run on an Android 15 (API 35) emulator, not just compiled. Zero warnings, zero errors.
+28 JVM unit tests pass (`./gradlew test`).
 
 Exercised on-device:
 
-- A card of each of the five answer types, added and then reviewed. Picked files land in the app's
-  private storage byte-for-byte, and the audio extension is derived from the MIME type.
-- Audio playback: duration read correctly, play/pause, progress tracking, and the player released
-  when the card leaves the screen.
-- Code answers keep their indentation in both the editor and the review screen.
-- The daily reminder end to end: permission prompt on Android 13+, the job scheduled at the right
-  delay (`TIME=+18h45m` for 20:00 from 01:14), rescheduling when the time changes rather than
-  stacking duplicates, the worker posting *"2 cards are due in Recall"* — a count checked against the
-  database and correct — and re-arming itself for the next day afterwards.
-- A full review session: reveal, all four grades, "Again" re-queueing, completion screen.
-- The scheduler checked against the database directly: after Again then Good a card holds
-  `repetition 1, interval 1 day, ease 2.30, lapses 1`, which is what SM-2 specifies.
-- Light and dark themes, portrait and landscape, and rotation mid-typing.
-- Installing this build over the previous one preserved the existing database, including cards that
-  already carried review history.
+- A card of each of the five answer types, added and then reviewed.
+- Editing an existing card: the form pre-fills, the answer type stays selected, and saving preserves
+  the card's scheduling state.
+- Import: separator auto-detected, a URL answer correctly classified as a Link, the new deck created,
+  and the rows confirmed in SQLite afterwards.
+- The review counter across a full session including an "Again" rating.
+- Notifications: permission prompt, and a test notification confirmed posted via `dumpsys`.
+- The launcher icon inspected at 4x from the recents switcher.
 
-**The migration safety was tested by deliberately breaking it.** Bumping `version` to 2 with no
-migration crashed on launch with the `IllegalStateException` above, and the database was untouched —
-1 deck and 5 cards before and after. Adding a real `Migration(1, 2)` then upgraded cleanly:
-`user_version` went to 2, the new column appeared with its default, and all five cards kept their
-scheduling state. Both halves of the promise hold. That experiment was then reverted — the shipped
-schema is still version 1, since none of the new features needed a schema change.
+Running it on a real phone and on the emulator has now caught seven bugs that compiling did not:
 
-Three bugs were found by running the app that compiling never would have caught, all fixed:
-
-1. **Due counts were always zero.** `strftime('%s','now')` has whole-second precision, so a card
-   saved milliseconds ago read as not-yet-due — and because a Room `Flow` only re-emits when the
-   *table* changes, that wrong zero stuck forever. Fixed with a millisecond clock expression plus a
-   ticker that re-subscribes once a minute.
-2. **"Again" then "Good" erased the lapse.** The re-queued card was the stale pre-rating snapshot, so
-   grading it again recomputed from the original state and overwrote the ease penalty — failing a
-   card had no lasting effect, which defeats the algorithm. `review()` now returns the rescheduled
-   card, and that is what goes back in the queue.
-3. **Rotating the phone wiped the add form.** `remember` does not survive Activity recreation;
-   switched to `rememberSaveable`. The deck picker also no longer keys off the live `decks` list,
-   which would have reset your choice the moment you created a deck from that screen.
-
-Not tested: a physical phone. Hardware-specific behaviour — a manufacturer's photo picker, an unusual
-aspect ratio, a vendor's aggressive background-process killer interfering with the reminder — remains
-unverified.
+1. **Due counts stuck at zero.** `strftime('%s','now')` has whole-second precision, so a card saved
+   milliseconds earlier read as not-yet-due — and because a Room `Flow` only re-emits when the
+   *table* changes, that wrong zero never corrected itself. Fixed with a millisecond clock
+   (`julianday`) plus a ticker that re-subscribes so the count tracks the passing clock.
+2. **"Again" then "Good" erased the lapse**, because the re-queued card was the stale pre-rating
+   snapshot and recomputed from the original state.
+3. **Rotating the phone wiped the add form** — `remember` does not survive Activity recreation;
+   `rememberSaveable` does.
+4. **The review counter ran away.** Rating "Again" re-queues a card, so counting raw positions gave
+   "4 of 4", then "5 of 5". Now it counts distinct cards remaining, which only ever decreases.
+5. **A deck with cards due could not be browsed at all.** Tapping the row went straight to review,
+   which made the edit button unreachable for every active deck. The row now opens the deck and the
+   badge starts the review.
+6. **The launcher icon sat low.** Geometric centring is not enough for a layered stack: the opaque
+   front card carries more visual weight than the translucent ones behind it, so it needed centring
+   by alpha-weighted area.
+7. **The delimiter guesser was fooled by HTML entities**, cutting `Q&amp;A` into `Q&amp`. Caught by
+   a unit test before it ever ran on a device.

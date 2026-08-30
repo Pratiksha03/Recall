@@ -51,6 +51,11 @@ object MediaStore {
             else -> null
         }
 
+    /** Reads a picked .txt/.csv/.tsv straight into memory — imports are small. */
+    fun readText(context: Context, uri: Uri): String? = runCatching {
+        context.contentResolver.openInputStream(uri)!!.use { it.readBytes().decodeToString() }
+    }.getOrNull()
+
     fun delete(path: String) {
         runCatching { File(path).takeIf { it.exists() }?.delete() }
     }

@@ -16,6 +16,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.AlertDialog
@@ -54,8 +56,11 @@ fun SettingsScreen(
     reminderHour: Int,
     reminderMinute: Int,
     notificationsBlocked: Boolean,
+    dueNow: Int,
     onToggleReminder: (Boolean) -> Unit,
     onSetTime: (hour: Int, minute: Int) -> Unit,
+    onSendTestNotification: () -> Unit,
+    onOpenImport: () -> Unit,
     onOpenSystemSettings: () -> Unit,
     onBack: () -> Unit
 ) {
@@ -179,7 +184,114 @@ fun SettingsScreen(
                 }
             }
 
+            AnimatedVisibility(visible = reminderEnabled) {
+                Column {
+                    Spacer(Modifier.height(12.dp))
+                    Surface(
+                        shape = RoundedCornerShape(20.dp),
+                        color = MaterialTheme.colorScheme.surface,
+                        tonalElevation = 1.dp,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(Modifier.padding(18.dp)) {
+                            Text(
+                                "Right now: " + if (dueNow == 0) "nothing is due"
+                                else "$dueNow card${if (dueNow == 1) "" else "s"} due",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                if (dueNow == 0)
+                                    "The reminder stays silent when nothing is due, so at " +
+                                        "this moment it would not notify you. Use the test " +
+                                        "below to check notifications work at all."
+                                else "The reminder would notify you if it ran now.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(Modifier.height(14.dp))
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(14.dp))
+                                    .background(
+                                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
+                                    )
+                                    .clickable(onClick = onSendTestNotification)
+                                    .padding(horizontal = 14.dp, vertical = 13.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.NotificationsActive,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(Modifier.width(10.dp))
+                                Text(
+                                    "Send a test notification now",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(12.dp))
+            Surface(
+                shape = RoundedCornerShape(20.dp),
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 1.dp,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(20.dp))
+                    .clickable(onClick = onOpenImport)
+            ) {
+                Row(
+                    Modifier.padding(18.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Default.FileDownload,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            "Import cards",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            "Paste or open an Anki text export.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Icon(
+                        Icons.Default.ChevronRight,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
             Spacer(Modifier.height(24.dp))
+            Text(
+                "Reminders are scheduled through Android's WorkManager, which may " +
+                    "deliver them a few minutes late so it can batch wakeups. If they " +
+                    "never arrive at all, check that battery optimisation is not " +
+                    "restricting Recall.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            Spacer(Modifier.height(16.dp))
             Text(
                 "Recall keeps everything on this phone. No account, no sync, no analytics.",
                 style = MaterialTheme.typography.bodyMedium,
