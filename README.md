@@ -1,5 +1,7 @@
 # Recall
 
+[![CI](https://github.com/Pratiksha03/Recall/actions/workflows/ci.yml/badge.svg)](https://github.com/Pratiksha03/Recall/actions/workflows/ci.yml)
+
 A small, good-looking flashcard app for Android — Anki's idea (spaced repetition), with a much
 simpler surface. Cards live in decks, and an answer can be **text**, **code**, a **link**, an
 **image**, or **audio**.
@@ -25,7 +27,8 @@ Built with Kotlin + Jetpack Compose + Room.
 8. [Importing from Anki](#importing-from-anki)
 9. [The scheduling algorithm](#the-scheduling-algorithm)
 10. [The Progress screen](#the-progress-screen)
-11. [Things you might want to change first](#things-you-might-want-to-change-first)
+11. [Cutting a signed release](#cutting-a-signed-release)
+12. [Things you might want to change first](#things-you-might-want-to-change-first)
 
 ---
 
@@ -543,6 +546,46 @@ local dates those are.
 Upgrading an existing install adds the table and starts you at empty. There is nothing to backfill
 from — the old schema never recorded a history — and inventing plausible-looking past reviews would
 make your first retention figure a lie.
+
+---
+
+## Cutting a signed release
+
+`./gradlew assembleRelease` works out of the box, but without an upload key it falls back to the
+**debug** key and says so:
+
+    No upload key configured - signing release with the DEBUG key. Not distributable.
+
+A debug-signed APK is fine for sideloading onto your own phone. It cannot go on the Play Store,
+and anyone's debug keystore can sign an update over it. For anything you hand to another person,
+generate a real upload key once:
+
+```bash
+keytool -genkeypair -v -keystore upload-keystore.jks -alias upload \
+        -keyalg RSA -keysize 2048 -validity 10000
+```
+
+`keytool` ships with the JDK. It will prompt for a store password, a key password, and your name
+and organisation. **Keep the keystore and its passwords safe and backed up** — on Play, losing the
+upload key means an account-level reset request, and outside Play it means you can never ship an
+update that existing installs will accept.
+
+Then copy `keystore.properties.example` to `keystore.properties` and fill it in:
+
+```properties
+storeFile=upload-keystore.jks
+storePassword=…
+keyAlias=upload
+keyPassword=…
+```
+
+Both the keystore and `keystore.properties` are gitignored. In CI, set `RECALL_STORE_FILE`,
+`RECALL_STORE_PASSWORD`, `RECALL_KEY_ALIAS` and `RECALL_KEY_PASSWORD` instead — the build reads
+either source. Re-run `./gradlew assembleRelease`; the warning disappears and
+`app/build/outputs/apk/release/app-release.apk` is signed with your key.
+
+For the Play Store specifically, build `./gradlew bundleRelease` instead — Play takes an `.aab`,
+not an APK, and its App Signing service re-signs with a separate app key it holds.
 
 ---
 

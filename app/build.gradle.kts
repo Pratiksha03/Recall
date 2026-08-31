@@ -1,9 +1,24 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
     id("com.google.devtools.ksp")   // annotation processor, Kotlin's answer to APT
 }
+
+// Upload-key credentials, read from keystore.properties at the repo root (gitignored)
+// or, for CI, from the matching environment variables. Absent both, release builds fall
+// back to the debug key and are not distributable - see the release block below.
+val keystoreProperties = Properties().apply {
+    val f = rootProject.file("keystore.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
+}
+fun signingValue(key: String, env: String): String? =
+    keystoreProperties.getProperty(key) ?: System.getenv(env)
+
+val uploadStoreFile = signingValue("storeFile", "RECALL_STORE_FILE")
+val hasUploadKey = uploadStoreFile != null && rootProject.file(uploadStoreFile).exists()
 
 android {
     namespace = "com.recall.app"
@@ -18,6 +33,18 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        // Only registered when a key is actually configured, so a fresh clone still builds.
+        if (hasUploadKey) {
+            create("upload") {
+                storeFile = rootProject.file(uploadStoreFile!!)
+                storePassword = signingValue("storePassword", "RECALL_STORE_PASSWORD")
+                keyAlias = signingValue("keyAlias", "RECALL_KEY_ALIAS")
+                keyPassword = signingValue("keyPassword", "RECALL_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
             // R8 shrinks and optimises; more importantly a release build is the only
@@ -28,11 +55,18 @@ android {
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
 
-            // Signed with the debug key purely so you can install it for testing.
-            // This is NOT a distributable build: it cannot go on the Play Store, and
-            // anyone's debug keystore can sign an update over it. Generating a real
-            // upload key is a separate step, only needed if you ever publish.
-            signingConfig = signingConfigs.getByName("debug")
+            // Signed with the real upload key when one is configured (see keystore.properties
+            // at the repo root, or the RECALL_* environment variables in CI). Without it we
+            // fall back to the debug key so a fresh clone still produces an installable APK -
+            // but that output is NOT distributable: it cannot go on the Play Store, and anyone's
+            // debug keystore can sign an update over it. See "Cutting a signed release" in the
+            // README for how to generate the key.
+            signingConfig = if (hasUploadKey) {
+                signingConfigs.getByName("upload")
+            } else {
+                logger.warn("No upload key configured - signing release with the DEBUG key. Not distributable.")
+                signingConfigs.getByName("debug")
+            }
         }
     }
 

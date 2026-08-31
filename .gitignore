@@ -8,3 +8,8 @@
 /captures
 .externalNativeBuild
 .cxx
+
+# Upload-key material - never commit these
+/keystore.properties
+*.jks
+*.keystore
