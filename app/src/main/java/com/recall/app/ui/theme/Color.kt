@@ -1,6 +1,7 @@
 package com.recall.app.ui.theme
 
 import androidx.compose.ui.graphics.Color
+import com.recall.app.srs.Rating
 
 // A calm indigo/violet base with warm neutrals. Everything else derives from these.
 val Indigo10 = Color(0xFF1A1036)
@@ -37,3 +38,20 @@ val DeckAccents = listOf(
 )
 
 fun accentFor(index: Int): Color = DeckAccents[index.mod(DeckAccents.size)]
+
+/**
+ * The colour each grade is drawn in — rose through amber and blue to teal.
+ *
+ * Shared by the rating buttons and the Progress screen so a bar meaning "Again"
+ * is the same red as the button you pressed to make it.
+ */
+fun colorFor(rating: Rating): Color = when (rating) {
+    Rating.AGAIN -> Rose40
+    Rating.HARD -> Amber40
+    Rating.GOOD -> Color(0xFF2E86DE)
+    Rating.EASY -> Teal40
+}
+
+/** Answered correctly / answered wrong, wherever a chart splits the two. */
+val RememberedColor = Teal40
+val ForgottenColor = Rose40

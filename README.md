@@ -18,7 +18,8 @@ Built with Kotlin + Jetpack Compose + Room.
 7. [How screens move](#how-screens-move)
 8. [Importing from Anki](#importing-from-anki)
 9. [The scheduling algorithm](#the-scheduling-algorithm)
-10. [Things you might want to change first](#things-you-might-want-to-change-first)
+10. [The Progress screen](#the-progress-screen)
+11. [Things you might want to change first](#things-you-might-want-to-change-first)
 
 ---
 
@@ -74,6 +75,12 @@ Tap a card to expand it and see the answer. Delete cards or the whole deck from 
 **Review.** Question first, tap to flip, then grade yourself with four buttons — **Again / Hard /
 Good / Easy** — each labelled with when you'd next see the card. That grade feeds the scheduler.
 Cards you mark "Again" come back later in the same session.
+
+**Progress.** The chart icon on the home banner. How much you actually remember, over the last
+week, month or three months: a retention figure split into young and mature cards, a bar per day of
+what you studied, which of the four buttons you have been pressing, what the scheduler has queued up
+for the next fortnight, how much of the collection is new against learned, retention per deck, and
+the handful of cards you keep forgetting. See [The Progress screen](#the-progress-screen).
 
 **Settings.** One setting: a daily reminder. Pick a time, and once a day the app checks whether
 anything is actually due and notifies you only if it is — a reminder that fires when there is nothing
@@ -136,8 +143,10 @@ JAVA_HOME=/opt/homebrew/opt/openjdk@21 ./gradlew assembleDebug
 JAVA_HOME=/opt/homebrew/opt/openjdk@21 ./gradlew assembleRelease
 ```
 
-Output: `app/build/outputs/apk/release/app-release.apk`, about **1.6 MB** against the debug build's
-17 MB.
+Output: `app/build/outputs/apk/release/app-release.apk`, about **4.2 MB** against the debug build's
+20 MB. Roughly 2.5 MB of the release APK is zstd-jni's prebuilt native library, shipped once per ABI
+so a `.colpkg` can be read on any phone; the app's own code and resources are the remaining 1.7 MB.
+Splitting per ABI would cut what a phone downloads, but only matters if you ever publish.
 
 It is worth installing this one to judge how the app really feels. A debug build is not just bigger,
 it is measurably less smooth, for a reason that is easy to miss: **Compose ships baseline profiles
@@ -204,6 +213,7 @@ Recall/
             ├── data/                   # storage layer
             │   ├── Card.kt             # @Entity — one flashcard
             │   ├── Deck.kt             # @Entity — a named group of cards
+            │   ├── ReviewLog.kt        # @Entity — one graded answer, the history
             │   ├── AnswerType.kt       # TEXT / LINK / IMAGE
             │   ├── Converters.kt       # teaches Room to store the enum
             │   ├── DeckWithCounts.kt   # deck + card counts, for the home screen
@@ -213,7 +223,6 @@ Recall/
             │   ├── RecallDao.kt        # the SQL
             │   ├── RecallDatabase.kt   # Room database singleton
             │   ├── MediaStore.kt       # copies picked images/audio into private storage
-            │   ├── Migrations.kt       # how to change the schema without losing data
             │   ├── ReminderPrefs.kt    # the three reminder settings
             │   └── RecallRepository.kt # the only thing the UI talks to
             ├── reminder/                # the daily notification
@@ -222,6 +231,7 @@ Recall/
             │   └── Notifications.kt     # the notification channel
             ├── srs/                    # spaced-repetition scheduling
             │   ├── Sm2.kt              # the SM-2 algorithm + Rating enum
+            │   ├── Stats.kt            # review history -> the Progress numbers
             │   └── DueFormat.kt        # "in 3 days", "due now"
             └── ui/
                 ├── RecallViewModel.kt  # app state, survives rotation
@@ -235,6 +245,7 @@ Recall/
                     ├── AddCardScreen.kt     # doubles as the edit screen
                     ├── ImportScreen.kt
                     ├── ReviewScreen.kt
+                    ├── StatsScreen.kt
                     └── SettingsScreen.kt
 ```
 
@@ -448,6 +459,87 @@ The queries that make it work are in [`RecallDao.kt`](app/src/main/java/com/reca
 
 ---
 
+## The Progress screen
+
+Grading a card overwrites its scheduling state — the old interval is gone the moment SM-2 runs. So
+every answer also appends a row to a second table, `reviews`
+([`data/ReviewLog.kt`](app/src/main/java/com/recall/app/data/ReviewLog.kt)), which is the journal
+that state was computed from and the only thing the Progress screen reads.
+
+A row records the card, the deck, the timestamp, which button you pressed, and — the important one —
+**the interval the card was on before you answered**. That last field is what makes the numbers
+honest, because it is what separates the three kinds of review:
+
+| `intervalBefore` | what it was |
+|---|---|
+| `0` | a first look at a new card |
+| `1`–`20` | a young card |
+| `21`+ | a mature card, in Anki's sense |
+
+The journal deliberately has **no foreign key** onto cards or decks. A history that rewrites itself
+when you tidy up a deck is not a history: last month's retention should not change because you
+deleted a card today. The ids are plain references, and the per-deck breakdown joins against `decks`
+and simply drops rows whose deck has gone.
+
+### What "retention" counts
+
+Of the cards you had already learned, how many did you still know?
+
+**The first answer you gave each card each day, excluding cards that were new.** Both halves matter,
+and so does the order they are applied in:
+
+- *New cards are excluded.* You cannot forget something you never knew. Counting first looks would
+  drag the figure down every time you added cards, which would make adding cards look like getting
+  worse at remembering them.
+- *Only the first answer of the day counts.* A card you fail comes back later in the same session. If
+  every answer counted, a card you got wrong could repair its own score the moment you got it right
+  ten seconds later.
+- *Group first, filter second.* Drop the new-card row first and the retry that follows it gets
+  promoted to being that card's answer for the day — so a card you did not know scores a clean 100%.
+  Grouping first means both rows belong to the same card-day, the earliest wins, and being new
+  removes the pair from the sums entirely. There is a test named after exactly this.
+
+Young and mature are reported separately, split at 21 days. Mature retention is the number worth
+watching: young cards are easy to remember because you saw them the day before yesterday.
+
+Everything else on the screen counts *every* answer, because it is measuring work done rather than
+knowledge held — the per-day bars, the totals, and the four-button breakdown all include the repeats
+and the new cards. The captions on the screen say so.
+
+### The rest of the panels
+
+| Panel | Where the number comes from |
+|---|---|
+| Streak | consecutive local dates with at least one review; an unfinished today does not break it |
+| Reviews per day | every answer, stacked remembered / forgotten / new; a day off is a flat tick |
+| Which button you pressed | the grade distribution, all answers |
+| Coming up | `dueAt` on the cards table for the next 14 days; anything overdue lands on today |
+| Your collection | new / young / mature, split on the card's current interval |
+| By deck | retention per deck, weakest first; decks with no reviews are left out |
+| Cards you keep forgetting | the `lapses` counter on the cards table, all time |
+
+### Where the work happens
+
+[`srs/Stats.kt`](app/src/main/java/com/recall/app/srs/Stats.kt) is pure Kotlin: it takes the rows,
+the timezone and today's date as arguments and returns one immutable snapshot. Nothing in it touches
+the clock or the database, which is why the counting rules above are tested on a plain JVM rather
+than on a phone.
+
+That is also why the day bucketing is done in Kotlin rather than in SQL. The day a review belongs to
+is a *local* date, and SQLite has no idea which timezone you were in or whether the clocks changed;
+`java.time` does. A session at 11pm belongs to the evening you were having, not to whatever date it
+was in UTC — there is a test pinning that too. So the DAO hands over rows for the window and the
+aggregation happens in Kotlin. Ninety days of heavy study is a few thousand small rows, which is
+cheaper to pass around than a wrong answer is to explain. The one exception is the streak, which
+needs all of history: SQLite thins that to one timestamp per day studied before Kotlin decides which
+local dates those are.
+
+Upgrading an existing install adds the table and starts you at empty. There is nothing to backfill
+from — the old schema never recorded a history — and inventing plausible-looking past reviews would
+make your first retention figure a lie.
+
+---
+
 ## Things you might want to change first
 
 Each of these is a small, self-contained edit — good for getting your bearings.
@@ -481,16 +573,19 @@ being dropped, but nothing filters on them yet. This one *does* need a migration
 ./gradlew test
 ```
 
-Plain JUnit on the JVM, no emulator. `srs/Sm2.kt` and `data/AnkiImport.kt` have no Android
-dependencies, which is exactly why they are the parts worth testing this way.
+Plain JUnit on the JVM, no emulator. `srs/Sm2.kt`, `srs/Stats.kt` and `data/AnkiImport.kt` have no
+Android dependencies, which is exactly why they are the parts worth testing this way — and why the
+retention rules live in `Stats.kt` instead of in the SQL or the Compose code.
 
 ```bash
 ./gradlew connectedDebugAndroidTest
 ```
 
-Needs a running emulator or a plugged-in phone, and covers one thing: `data/AnkiPackage.kt`. Zip,
+Needs a running emulator or a plugged-in phone, and covers two things. `data/AnkiPackage.kt`: zip,
 zstd and SQLite are all real device machinery, so the tests build actual `.colpkg` and `.apkg`
-files — in both of the layouts Anki produces — and read them back.
+files — in both of the layouts Anki produces — and read them back. And the migrations: `MigrationTest`
+creates a real version 1 database with cards in it, runs the migration, and checks both that the
+cards came through with their scheduling intact and that the resulting schema is one Room accepts.
 
 ### Changing the database
 
@@ -519,7 +614,12 @@ The recipe, in [Migrations.kt](app/src/main/java/com/recall/app/data/Migrations.
 5. Install the new build *over* the old one (don't uninstall) and confirm your data is still there.
 
 `app/schemas/` is the schema history, one JSON file per version, checked into git on purpose: it is
-what makes step 4 possible and what Room's migration tests read.
+what makes step 4 possible and what Room's migration tests read. `MigrationTest` in the androidTest
+source set does step 5 for you on every run: `runMigrationsAndValidate` compares the migrated
+database against `2.json`, so a migration whose SQL has drifted from the entity — a missing index, a
+column typed `INTEGER` where the entity says `Double` — fails there rather than on someone's phone.
+Version 2 adds the review journal behind the Progress screen, and is worked through in
+[Migrations.kt](app/src/main/java/com/recall/app/data/Migrations.kt).
 
 SQLite can `ALTER TABLE ADD COLUMN`, but it cannot drop or retype a column. For those you create a
 new table, copy the rows across, drop the old one and rename — there is a worked example in the
@@ -538,7 +638,9 @@ WorkManager 2.9.1 · `minSdk 26` (Android 8.0) · `targetSdk 35`
 ## Verified
 
 Built and run on an Android 15 (API 35) emulator, not just compiled. Zero warnings, zero errors.
-28 JVM unit tests pass (`./gradlew test`).
+29 JVM unit tests pass — 14 for the Anki text parser, 15 for the stats. (`./gradlew test` reports 58,
+because it runs the whole suite once per build variant.) 7 on-device tests pass
+(`./gradlew connectedDebugAndroidTest`): 5 for the package importer, 2 for the migration.
 
 Exercised on-device:
 
@@ -550,8 +652,12 @@ Exercised on-device:
 - The review counter across a full session including an "Again" rating.
 - Notifications: permission prompt, and a test notification confirmed posted via `dumpsys`.
 - The launcher icon inspected at 4x from the recents switcher.
+- The review journal: a session graded through the UI — including an "Again" and its repeat — then
+  the rows read back out of SQLite to confirm each one recorded the interval the card was actually
+  answered on.
+- The Progress screen against a month of history, in light and dark, at all three windows.
 
-Running it on a real phone and on the emulator has now caught seven bugs that compiling did not:
+Running it on a real phone and on the emulator has now caught eight bugs that compiling did not:
 
 1. **Due counts stuck at zero.** `strftime('%s','now')` has whole-second precision, so a card saved
    milliseconds earlier read as not-yet-due — and because a Room `Flow` only re-emits when the
@@ -571,3 +677,7 @@ Running it on a real phone and on the emulator has now caught seven bugs that co
    by alpha-weighted area.
 7. **The delimiter guesser was fooled by HTML entities**, cutting `Q&amp;A` into `Q&amp`. Caught by
    a unit test before it ever ran on a device.
+8. **A new card you failed and then passed scored 100% retention.** Only visible in real graded rows:
+   excluding the new-card answer *first* left the retry standing in as that card's answer for the
+   day. Grouping by card-and-day before excluding new cards drops the pair together, which is what
+   the number should do.

@@ -1,6 +1,7 @@
 package com.recall.app.data
 
 import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 
 /**
  * How to change the database without losing anyone's cards.
@@ -27,27 +28,37 @@ import androidx.room.migration.Migration
  * stored as text, so the schema does not change at all.
  */
 val MIGRATIONS: Array<Migration> = arrayOf(
-    // Nothing here yet: the database is still at version 1.
-    //
-    // The next one you write will look like this — a new nullable column with a
-    // default is the easy, common case:
-    //
-    // object : Migration(1, 2) {
-    //     override fun migrate(db: SupportSQLiteDatabase) {
-    //         db.execSQL("ALTER TABLE cards ADD COLUMN timesSeen INTEGER NOT NULL DEFAULT 0")
-    //     }
-    // }
-    //
-    // A whole new table is just as easy — copy the CREATE TABLE statement that
-    // Room put in app/schemas/2.json so it matches byte for byte:
-    //
-    // object : Migration(2, 3) {
-    //     override fun migrate(db: SupportSQLiteDatabase) {
-    //         db.execSQL(
-    //             "CREATE TABLE IF NOT EXISTS tags (" +
-    //                 "id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
-    //                 "name TEXT NOT NULL)"
-    //         )
-    //     }
-    // }
+
+    /**
+     * 1 -> 2: the review journal behind the Progress screen.
+     *
+     * Purely additive — no existing table is touched, so every card and its
+     * scheduling state survives untouched. Anyone upgrading starts with an empty
+     * history, because the old schema never recorded one: there is nothing to
+     * backfill from, and inventing plausible-looking past reviews would make the
+     * first retention figure a lie.
+     *
+     * The SQL below is copied from schemas/2.json. It has to match what Room
+     * generates character for character, down to the backticks, or Room throws on
+     * the first launch after the upgrade.
+     */
+    object : Migration(1, 2) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS `reviews` (" +
+                    "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                    "`cardId` INTEGER NOT NULL, " +
+                    "`deckId` INTEGER NOT NULL, " +
+                    "`reviewedAt` INTEGER NOT NULL, " +
+                    "`rating` TEXT NOT NULL, " +
+                    "`remembered` INTEGER NOT NULL, " +
+                    "`intervalBefore` INTEGER NOT NULL, " +
+                    "`intervalAfter` INTEGER NOT NULL, " +
+                    "`easeAfter` REAL NOT NULL)"
+            )
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_reviews_reviewedAt` ON `reviews` (`reviewedAt`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_reviews_cardId` ON `reviews` (`cardId`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_reviews_deckId` ON `reviews` (`deckId`)")
+        }
+    }
 )

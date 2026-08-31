@@ -3,11 +3,18 @@ package com.recall.app.data
 import android.content.Context
 import com.recall.app.srs.Rating
 import com.recall.app.srs.Sm2
+import com.recall.app.srs.Stats
+import com.recall.app.srs.StatsSnapshot
+import com.recall.app.srs.StatsWindow
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
+import java.util.concurrent.TimeUnit
 
 /**
  * The single place the UI talks to for data. Screens never touch the DAO directly
@@ -110,12 +117,68 @@ class RecallRepository(private val context: Context) {
      * Grade a card and push it into the future.
      * Returns the rescheduled card so the caller keeps working from fresh state
      * rather than the snapshot it passed in.
+     *
+     * The journal row is written from the card as it was *before* the grade landed,
+     * because that is the state the answer was actually given against — once
+     * [Sm2.apply] has run, the interval you were tested on no longer exists anywhere.
      */
     suspend fun review(card: Card, rating: Rating): Card {
-        val updated = Sm2.apply(card, rating)
+        val now = System.currentTimeMillis()
+        val updated = Sm2.apply(card, rating, now)
         dao.updateCard(updated)
+        dao.insertReview(
+            ReviewLog(
+                cardId = card.id,
+                deckId = card.deckId,
+                reviewedAt = now,
+                rating = rating,
+                remembered = rating != Rating.AGAIN,
+                intervalBefore = card.intervalDays,
+                intervalAfter = updated.intervalDays,
+                easeAfter = updated.easeFactor
+            )
+        )
         return updated
     }
+
+    // ----- progress -----
+
+    /** Re-emits whenever a card is graded, so the Progress screen stays live. */
+    fun reviewCount(): Flow<Int> = dao.observeReviewCount()
+
+    /**
+     * Gather everything the Progress screen shows in one pass.
+     *
+     * Five small reads and then pure Kotlin: the aggregation lives in [Stats] so it
+     * can be tested without a database, and this function stays a list of the things
+     * that have to be fetched.
+     */
+    suspend fun stats(window: StatsWindow, zone: ZoneId = ZoneId.systemDefault()): StatsSnapshot {
+        val now = System.currentTimeMillis()
+        val today = LocalDate.now(zone)
+        // Midnight at the far edge of the window, not "now minus N x 24h" — the first
+        // bar of the chart is a whole day, and half of it is not in the window.
+        val since = today.minusDays((window.days - 1).toLong())
+            .atStartOfDay(zone).toInstant().toEpochMilli()
+
+        return Stats.build(
+            window = window,
+            logs = dao.reviewsSince(since),
+            decks = dao.allDecksOnce(),
+            schedules = dao.cardSchedules(),
+            studiedStamps = dao.studiedDayStamps(tzOffsetMs(zone, now)),
+            totalReviews = dao.totalReviews(),
+            hardestCards = dao.mostLapsedCards(HARDEST_CARDS),
+            zone = zone,
+            today = today,
+            now = now
+        )
+    }
+
+    private fun tzOffsetMs(zone: ZoneId, now: Long): Long =
+        TimeUnit.SECONDS.toMillis(
+            zone.rules.getOffset(Instant.ofEpochMilli(now)).totalSeconds.toLong()
+        )
 
     /** Reuse a deck of this name if it exists, otherwise make one. */
     suspend fun findOrCreateDeck(name: String, colorIndex: Int = 0): Long {
@@ -173,4 +236,10 @@ class RecallRepository(private val context: Context) {
             dao.insertCard(Card(deckId = deckId, question = q, answer = a, answerType = type))
         }
     }
+
+    private companion object {
+        /** How many "you keep forgetting this" cards the Progress screen lists. */
+        const val HARDEST_CARDS = 5
+    }
 }
+

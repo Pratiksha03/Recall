@@ -53,6 +53,12 @@ android {
     buildFeatures {
         compose = true
     }
+
+    // MigrationTestHelper reads the schema JSON off the device, so the files Room
+    // exports below have to be packaged into the test APK as assets.
+    sourceSets {
+        getByName("androidTest").assets.srcDir("$projectDir/schemas")
+    }
 }
 
 // Room writes the database schema as JSON here on every build. Check these files
@@ -103,4 +109,5 @@ dependencies {
     // Android machinery, so there is nothing to check without a device.
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.room:room-testing:2.6.1")
 }
