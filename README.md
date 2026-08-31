@@ -1,9 +1,15 @@
 # Recall
 
 A small, good-looking flashcard app for Android — Anki's idea (spaced repetition), with a much
-simpler surface. Cards live in decks, and an answer can be **text**, a **link**, or an **image**.
+simpler surface. Cards live in decks, and an answer can be **text**, **code**, a **link**, an
+**image**, or **audio**.
 
 Built with Kotlin + Jetpack Compose + Room.
+
+| Decks | Review | Add card | Progress |
+|:---:|:---:|:---:|:---:|
+| <img src="docs/screenshots/decks.png" width="200"> | <img src="docs/screenshots/review.png" width="200"> | <img src="docs/screenshots/add-card.png" width="200"> | <img src="docs/screenshots/progress.png" width="200"> |
+| What is due, per deck | Answer, then grade it | Five answer types | What you actually retain |
 
 ---
 
