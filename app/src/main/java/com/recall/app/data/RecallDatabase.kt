@@ -6,7 +6,7 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
 
-@Database(entities = [Deck::class, Card::class], version = 1, exportSchema = true)
+@Database(entities = [Deck::class, Card::class, ReviewLog::class], version = 2, exportSchema = true)
 @TypeConverters(Converters::class)
 abstract class RecallDatabase : RoomDatabase() {
 

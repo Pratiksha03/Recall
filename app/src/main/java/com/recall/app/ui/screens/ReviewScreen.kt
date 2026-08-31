@@ -44,7 +44,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -53,6 +52,7 @@ import com.recall.app.srs.Rating
 import com.recall.app.srs.Sm2
 import com.recall.app.ui.ReviewState
 import com.recall.app.ui.components.AnswerView
+import com.recall.app.ui.theme.colorFor
 
 private val CardEasing = CubicBezierEasing(0.2f, 0f, 0f, 1f)
 private const val CARD_MS = 260
@@ -257,12 +257,6 @@ private fun RevealButton(onReveal: () -> Unit) {
 /** The four Anki buttons, each labelled with when you'd next see the card. */
 @Composable
 private fun RatingBar(card: Card, onRate: (Rating) -> Unit) {
-    val colors = mapOf(
-        Rating.AGAIN to Color(0xFFE2445C),
-        Rating.HARD to Color(0xFFE0952A),
-        Rating.GOOD to Color(0xFF2E86DE),
-        Rating.EASY to Color(0xFF00A08A)
-    )
     Row(
         Modifier
             .fillMaxWidth()
@@ -270,7 +264,7 @@ private fun RatingBar(card: Card, onRate: (Rating) -> Unit) {
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         Rating.entries.forEach { rating ->
-            val color = colors.getValue(rating)
+            val color = colorFor(rating)
             Column(
                 Modifier
                     .weight(1f)

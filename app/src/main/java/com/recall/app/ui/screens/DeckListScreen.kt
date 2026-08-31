@@ -23,6 +23,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Insights
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.ExtendedFloatingActionButton
@@ -54,7 +55,8 @@ fun DeckListScreen(
     onReviewDeck: (Long) -> Unit,
     onAddCard: () -> Unit,
     onNewDeck: () -> Unit,
-    onOpenSettings: () -> Unit
+    onOpenSettings: () -> Unit,
+    onOpenStats: () -> Unit
 ) {
     val totalDue = decks.sumOf { it.dueCards }
 
@@ -77,7 +79,14 @@ fun DeckListScreen(
             contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 100.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            item { HeaderCard(totalDue = totalDue, deckCount = decks.size, onOpenSettings = onOpenSettings) }
+            item {
+                HeaderCard(
+                    totalDue = totalDue,
+                    deckCount = decks.size,
+                    onOpenSettings = onOpenSettings,
+                    onOpenStats = onOpenStats
+                )
+            }
 
             item {
                 Row(
@@ -118,7 +127,12 @@ fun DeckListScreen(
 }
 
 @Composable
-private fun HeaderCard(totalDue: Int, deckCount: Int, onOpenSettings: () -> Unit) {
+private fun HeaderCard(
+    totalDue: Int,
+    deckCount: Int,
+    onOpenSettings: () -> Unit,
+    onOpenStats: () -> Unit
+) {
     Surface(
         shape = RoundedCornerShape(26.dp),
         color = MaterialTheme.colorScheme.primary,
@@ -149,6 +163,17 @@ private fun HeaderCard(totalDue: Int, deckCount: Int, onOpenSettings: () -> Unit
                         color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f),
                         modifier = Modifier.weight(1f)
                     )
+                    Icon(
+                        Icons.Default.Insights,
+                        contentDescription = "Progress",
+                        tint = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.9f),
+                        modifier = Modifier
+                            .size(34.dp)
+                            .clip(CircleShape)
+                            .clickable(onClick = onOpenStats)
+                            .padding(7.dp)
+                    )
+                    Spacer(Modifier.width(2.dp))
                     Icon(
                         Icons.Default.Settings,
                         contentDescription = "Settings",

@@ -268,7 +268,7 @@ fun SettingsScreen(
                             color = MaterialTheme.colorScheme.onSurface
                         )
                         Text(
-                            "Paste or open an Anki text export.",
+                            "Open an Anki .colpkg or .apkg, or paste a text export.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )

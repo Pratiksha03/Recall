@@ -12,7 +12,12 @@ import com.recall.app.data.RecallRepository
 import com.recall.app.data.ReminderPrefs
 import com.recall.app.reminder.ReminderScheduler
 import com.recall.app.srs.Rating
+import com.recall.app.srs.StatsSnapshot
+import com.recall.app.srs.StatsWindow
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -48,6 +53,27 @@ class RecallViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _reviewState = MutableStateFlow(ReviewState())
     val reviewState: StateFlow<ReviewState> = _reviewState.asStateFlow()
+
+    private val _statsWindow = MutableStateFlow(StatsWindow.MONTH)
+    val statsWindow: StateFlow<StatsWindow> = _statsWindow.asStateFlow()
+
+    /**
+     * The Progress screen's numbers, recomputed when you change the window and again
+     * whenever a card is graded — so finishing a session and stepping back into the
+     * screen never shows you a figure from before it.
+     *
+     * null means "not loaded yet", which the screen draws as a spinner rather than
+     * as a collection with no history.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val stats: StateFlow<StatsSnapshot?> =
+        combine(_statsWindow, repo.reviewCount()) { window, _ -> window }
+            .mapLatest { repo.stats(it) }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    fun setStatsWindow(window: StatsWindow) {
+        _statsWindow.value = window
+    }
 
     private val _reminder = MutableStateFlow(
         ReminderSettings(prefs.enabled, prefs.hour, prefs.minute)

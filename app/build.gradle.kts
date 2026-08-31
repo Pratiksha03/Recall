@@ -15,6 +15,7 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "1.0"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
@@ -52,6 +53,12 @@ android {
     buildFeatures {
         compose = true
     }
+
+    // MigrationTestHelper reads the schema JSON off the device, so the files Room
+    // exports below have to be packaged into the test APK as assets.
+    sourceSets {
+        getByName("androidTest").assets.srcDir("$projectDir/schemas")
+    }
 }
 
 // Room writes the database schema as JSON here on every build. Check these files
@@ -84,9 +91,23 @@ dependencies {
     // --- Coil: loads image files into Compose ---
     implementation("io.coil-kt:coil-compose:2.7.0")
 
+    // --- zstd: Anki compresses the collection inside a .colpkg/.apkg with it ---
+    // The AAR carries a prebuilt native library per ABI (~0.5 MB each). There is no
+    // zstd in the JDK or in Android, and no usable pure-Java one, so this is the price
+    // of reading anything exported by Anki 2.1.50 or later. Pinned below 1.5.7-13,
+    // where the AAR started demanding compileSdk 37.
+    implementation("com.github.luben:zstd-jni:1.5.7-12@aar")
+
     // --- WorkManager: runs the daily reminder even when the app is closed ---
     implementation("androidx.work:work-runtime-ktx:2.9.1")
 
     // --- plain JVM unit tests: ./gradlew test ---
     testImplementation("junit:junit:4.13.2")
+
+    // --- on-device tests: ./gradlew connectedDebugAndroidTest ---
+    // Only the package importer needs these: unzipping, zstd and SQLite are all real
+    // Android machinery, so there is nothing to check without a device.
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.room:room-testing:2.6.1")
 }

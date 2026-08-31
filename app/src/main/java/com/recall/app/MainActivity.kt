@@ -35,6 +35,7 @@ import com.recall.app.ui.screens.ImportScreen
 import com.recall.app.ui.screens.NewDeckDialog
 import com.recall.app.ui.screens.ReviewScreen
 import com.recall.app.ui.screens.SettingsScreen
+import com.recall.app.ui.screens.StatsScreen
 import com.recall.app.ui.theme.RecallTheme
 import androidx.core.app.NotificationManagerCompat
 import androidx.compose.ui.platform.LocalContext
@@ -72,6 +73,7 @@ private object Routes {
     const val EDIT = "edit/{cardId}"
     const val IMPORT = "import"
     const val SETTINGS = "settings"
+    const val STATS = "stats"
 
     fun deckDetail(id: Long) = "deck/$id"
     fun review(id: Long) = "review/$id"
@@ -124,7 +126,8 @@ private fun RecallNavGraph(vm: RecallViewModel = viewModel()) {
                 onReviewDeck = { navController.navigate(Routes.review(it)) },
                 onAddCard = { navController.navigate(Routes.add(null)) },
                 onNewDeck = { showNewDeck = true },
-                onOpenSettings = { navController.navigate(Routes.SETTINGS) }
+                onOpenSettings = { navController.navigate(Routes.SETTINGS) },
+                onOpenStats = { navController.navigate(Routes.STATS) }
             )
 
             if (showNewDeck) {
@@ -182,6 +185,18 @@ private fun RecallNavGraph(vm: RecallViewModel = viewModel()) {
                     vm.endReview()
                     navController.popBackStack()
                 }
+            )
+        }
+
+        composable(Routes.STATS) {
+            val stats by vm.stats.collectAsStateWithLifecycle()
+            val window by vm.statsWindow.collectAsStateWithLifecycle()
+
+            StatsScreen(
+                stats = stats,
+                window = window,
+                onSetWindow = vm::setStatsWindow,
+                onBack = { navController.popBackStack() }
             )
         }
 

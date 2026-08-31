@@ -10,10 +10,12 @@ data class ImportedCard(
 
 data class ImportResult(
     val cards: List<ImportedCard> = emptyList(),
-    val deckName: String? = null,      // from a #deck: header, if present
+    val deckName: String? = null,      // a #deck: header, or the package's own deck
     val separatorName: String = "tab",
     val skipped: Int = 0,
-    val warnings: List<String> = emptyList()
+    val warnings: List<String> = emptyList(),
+    /** The file this came from, when it was a package rather than pasted text. */
+    val source: String? = null
 ) {
     val isEmpty: Boolean get() = cards.isEmpty()
 }
@@ -240,7 +242,7 @@ object AnkiImport {
      * Map an imported answer onto one of this app's answer types.
      * Anki wraps code in <pre>/<code>, which is exactly our CODE type.
      */
-    private fun detectType(rawAnswer: String, plainAnswer: String): AnswerType = when {
+    internal fun detectType(rawAnswer: String, plainAnswer: String): AnswerType = when {
         Regex("(?i)<(pre|code)\\b").containsMatchIn(rawAnswer) -> AnswerType.CODE
         URL.matches(plainAnswer.trim()) -> AnswerType.LINK
         else -> AnswerType.TEXT

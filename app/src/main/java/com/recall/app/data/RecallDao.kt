@@ -107,4 +107,56 @@ interface RecallDao {
 
     @Query("SELECT * FROM cards WHERE id = :cardId")
     suspend fun cardById(cardId: Long): Card?
+
+    /** Scheduling state only, for the forecast and the new/young/mature mix. */
+    @Query("SELECT dueAt, intervalDays, repetition, lapses FROM cards")
+    suspend fun cardSchedules(): List<CardSchedule>
+
+    /** The cards you keep forgetting, worst first. */
+    @Query("SELECT * FROM cards WHERE lapses > 0 ORDER BY lapses DESC, dueAt ASC LIMIT :limit")
+    suspend fun mostLapsedCards(limit: Int): List<Card>
+
+    @Query("SELECT * FROM decks")
+    suspend fun allDecksOnce(): List<Deck>
+
+    // ----- review history -----
+
+    @Insert
+    suspend fun insertReview(log: ReviewLog)
+
+    /**
+     * Every answer inside the window the Progress screen is showing.
+     *
+     * Rows rather than SUM()s on purpose: the day a review belongs to is a *local*
+     * date, and SQLite has no idea what timezone you were in or whether the clocks
+     * changed. Kotlin does. Ninety days of heavy study is a few thousand small rows,
+     * which is cheaper to hand over than a wrong answer is to explain.
+     */
+    @Query("SELECT * FROM reviews WHERE reviewedAt >= :since ORDER BY reviewedAt ASC")
+    suspend fun reviewsSince(since: Long): List<ReviewLog>
+
+    @Query("SELECT COUNT(*) FROM reviews")
+    suspend fun totalReviews(): Int
+
+    /** Drives a refresh of the whole Progress screen whenever a card is graded. */
+    @Query("SELECT COUNT(*) FROM reviews")
+    fun observeReviewCount(): Flow<Int>
+
+    /**
+     * One timestamp per day you have ever studied — the streak needs the whole of
+     * history, and this is how to get it without loading the whole of history.
+     *
+     * The bucket is a crude fixed-offset day, used only to *thin* the rows; Kotlin
+     * then decides which local date each timestamp really falls on. Taking both the
+     * first and the last review of each bucket means a bucket that straddles two
+     * local dates (a clock change) still reports both of them.
+     */
+    @Query(
+        """
+        SELECT MIN(reviewedAt) FROM reviews GROUP BY (reviewedAt + :tzOffsetMs) / 86400000
+        UNION
+        SELECT MAX(reviewedAt) FROM reviews GROUP BY (reviewedAt + :tzOffsetMs) / 86400000
+        """
+    )
+    suspend fun studiedDayStamps(tzOffsetMs: Long): List<Long>
 }
